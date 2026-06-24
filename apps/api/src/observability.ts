@@ -18,6 +18,7 @@ import { Resource } from "sst/resource/cloudflare";
 import { RequestContext } from "@leuchtturm/api/middleware/request-context";
 import { Posthog } from "@leuchtturm/api/posthog";
 import { Session } from "@leuchtturm/api/session";
+import { isExpectedClientError } from "@leuchtturm/core/errors";
 
 export namespace Observability {
 	export interface Interface {
@@ -125,6 +126,13 @@ export namespace Observability {
 
 				function captureUnexpectedDefect(defect: unknown, request: RequestContext.Interface) {
 					return Effect.gen(function* () {
+						// Expected, handled 4xx client errors (e.g. UnauthorizedError raised by
+						// the auth middleware for unauthenticated requests) are normal request
+						// outcomes, not defects. Keep them out of error tracking.
+						if (isExpectedClientError(defect)) {
+							return;
+						}
+
 						const currentContext = yield* Effect.context();
 						const session = Context.getOption(currentContext, Session.Service);
 
