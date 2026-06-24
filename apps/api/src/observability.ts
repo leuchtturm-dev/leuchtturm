@@ -11,6 +11,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import * as HttpMiddleware from "effect/unstable/http/HttpMiddleware";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as HttpTraceContext from "effect/unstable/http/HttpTraceContext";
 import * as Otlp from "effect/unstable/observability/Otlp";
 import { Resource } from "sst/resource/cloudflare";
@@ -124,6 +125,27 @@ export namespace Observability {
 				const posthog = yield* Posthog.Service;
 
 				function captureUnexpectedDefect(defect: unknown, request: RequestContext.Interface) {
+					// Internet vulnerability scanners constantly probe non-existent routes (`/.env`,
+					// `/.git/config`, `/admin/*`, and so on). Their 404s travel through the defect
+					// channel as benign control flow, not real errors, so we skip them here to keep
+					// scanner noise from drowning out genuine defects in error tracking.
+
+					// An unmatched route surfaces as an Effect `HttpServerResponse` with status 404.
+					if (HttpServerResponse.isHttpServerResponse(defect) && defect.status === 404) {
+						return Effect.void;
+					}
+
+					// A 404 raised as a thrown response (e.g. Better Auth's `onAPIError: { throw: true }`)
+					// is captured as `"Response returned status 404."`.
+					if (
+						typeof defect === "object" &&
+						defect !== null &&
+						"message" in defect &&
+						defect.message === "Response returned status 404."
+					) {
+						return Effect.void;
+					}
+
 					return Effect.gen(function* () {
 						const currentContext = yield* Effect.context();
 						const session = Context.getOption(currentContext, Session.Service);
