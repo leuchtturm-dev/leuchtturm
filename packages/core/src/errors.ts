@@ -77,3 +77,22 @@ export const Errors = [
 	DatabaseError,
 	InternalServerError,
 ] as const;
+
+/**
+ * Expected, typed 4xx client errors. These represent normal request outcomes
+ * (bad input, missing auth, forbidden, not found) rather than defects, so they
+ * should never be reported to error tracking.
+ */
+export const ExpectedClientErrors = [
+	ValidationError,
+	UnauthorizedError,
+	ForbiddenError,
+	NotFoundError,
+] as const;
+
+/**
+ * Returns `true` when the given value is one of the expected typed client
+ * errors above. Used to keep handled 4xx failures out of the observability
+ * capture path.
+ */
+export const isExpectedClientError = Schema.is(Schema.Union(ExpectedClientErrors));
